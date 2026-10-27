@@ -1,6 +1,6 @@
 {
-  "versionCode": 2,
-  "versionName": "1.1",
-  "changelog": "• New Feature: Enhanced Speed & Auto-Fill\n• Improved Desktop QR Payment Stability\n• Performance Optimizations & Bug Fixes",
+  "versionCode": 1,
+  "versionName": "1.0",
+  "changelog": "• Initial Release (v1.0)\n• License Key System & Auto Device Binding\n• In-App Update Checker\n• Desktop View & Payment Support",
   "downloadUrl": "https://github.com/imsonuksingh/AutomationAPK/releases/latest"
 }
