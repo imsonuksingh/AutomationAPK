@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "57089547054",
+    "project_id": "irctc-a6c64",
+    "storage_bucket": "irctc-a6c64.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:57089547054:android:2fef875c7fbc4dcdcef8bf",
+        "android_client_info": {
+          "package_name": "com.sonu.myapplication"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAuKHfr62qhmZX5ZUCAPZu9V_6ssZu6ejQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
