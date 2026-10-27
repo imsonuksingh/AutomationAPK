@@ -145,8 +145,8 @@ class MainActivity : ComponentActivity() {
                     var showWebsiteSelectionDialog by remember { mutableStateOf(false) }
                     var loggedInUserName by remember { mutableStateOf("") }
 
-                    // Check for App Updates from GitHub on startup
-                    CheckAppUpdates(currentVersionCode = 1)
+                    // Check for App Updates from GitHub on startup (current versionCode = 2)
+                    CheckAppUpdates(currentVersionCode = 2)
 
                     when (val screen = currentScreen) {
                         is AppScreen.Login -> {
@@ -271,7 +271,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun CheckAppUpdates(currentVersionCode: Int = 1) {
+fun CheckAppUpdates(currentVersionCode: Int = 2) {
     var updateInfo by remember { mutableStateOf<UpdateInfo?>(null) }
     var showUpdateDialog by remember { mutableStateOf(false) }
     var isDownloading by remember { mutableStateOf(false) }
@@ -310,7 +310,7 @@ fun CheckAppUpdates(currentVersionCode: Int = 1) {
                         }
                     } else {
                         withContext(Dispatchers.Main) {
-                            Toast.makeText(context, "Already on Latest Version (v1.0)", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "Already on Latest Version (v1.1)", Toast.LENGTH_SHORT).show()
                         }
                     }
                 }
@@ -326,10 +326,34 @@ fun CheckAppUpdates(currentVersionCode: Int = 1) {
 
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                val url = URL(apkUrl)
-                val connection = url.openConnection() as HttpURLConnection
-                connection.requestMethod = "GET"
-                connection.connect()
+                var currentUrl = apkUrl
+                var connection: HttpURLConnection
+                var responseCode: Int
+
+                // Follow HTTP/HTTPS & GitHub S3 redirects manually
+                while (true) {
+                    val url = URL(currentUrl)
+                    connection = url.openConnection() as HttpURLConnection
+                    connection.instanceFollowRedirects = true
+                    connection.connectTimeout = 10000
+                    connection.readTimeout = 10000
+                    connection.requestMethod = "GET"
+                    connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
+                    connection.connect()
+
+                    responseCode = connection.responseCode
+                    if (responseCode == HttpURLConnection.HTTP_MOVED_PERM || 
+                        responseCode == HttpURLConnection.HTTP_MOVED_TEMP || 
+                        responseCode == 307 || responseCode == 308) {
+                        val location = connection.getHeaderField("Location")
+                        if (location != null) {
+                            currentUrl = location
+                            connection.disconnect()
+                            continue
+                        }
+                    }
+                    break
+                }
 
                 val fileLength = connection.contentLength
                 val downloadsDir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
@@ -340,7 +364,7 @@ fun CheckAppUpdates(currentVersionCode: Int = 1) {
                 val inputStream = connection.inputStream
                 val outputStream = FileOutputStream(apkFile)
 
-                val buffer = ByteArray(4096)
+                val buffer = ByteArray(8192)
                 var total: Long = 0
                 var count: Int
 
@@ -349,6 +373,8 @@ fun CheckAppUpdates(currentVersionCode: Int = 1) {
                     if (fileLength > 0) {
                         downloadProgress = (total.toFloat() / fileLength.toFloat())
                         downloadStatusText = "Downloading Update: ${(downloadProgress * 100).toInt()}%"
+                    } else {
+                        downloadStatusText = "Downloading Update: ${(total / 1024)} KB"
                     }
                     outputStream.write(buffer, 0, count)
                 }
@@ -356,6 +382,22 @@ fun CheckAppUpdates(currentVersionCode: Int = 1) {
                 outputStream.flush()
                 outputStream.close()
                 inputStream.close()
+                connection.disconnect()
+
+                // Check if file is valid APK (> 50KB)
+                if (apkFile.length() < 50000) {
+                    withContext(Dispatchers.Main) {
+                        isDownloading = false
+                        Toast.makeText(context, "Opening direct update link in browser...", Toast.LENGTH_LONG).show()
+                        try {
+                            val intent = Intent(Intent.ACTION_VIEW, apkUrl.toUri())
+                            context.startActivity(intent)
+                        } catch (ex: Exception) {
+                            // ignore
+                        }
+                    }
+                    return@launch
+                }
 
                 withContext(Dispatchers.Main) {
                     downloadStatusText = "Download Complete! Launching Installer..."
@@ -374,10 +416,12 @@ fun CheckAppUpdates(currentVersionCode: Int = 1) {
                             setDataAndType(apkUri, "application/vnd.android.package-archive")
                             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
                         }
                         context.startActivity(installIntent)
                     } catch (e: Exception) {
-                        Toast.makeText(context, "Please grant permission to install updates", Toast.LENGTH_LONG).show()
+                        e.printStackTrace()
+                        Toast.makeText(context, "Error launching installer. Please grant install permission.", Toast.LENGTH_LONG).show()
                     }
                 }
             } catch (e: Exception) {
