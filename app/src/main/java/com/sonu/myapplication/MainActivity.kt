@@ -1144,7 +1144,7 @@ fun IRCTCWebViewScreen(
                                 val url = request?.url?.toString() ?: return false
                                 if (url.startsWith("upi://") || 
                                     url.startsWith("intent://") || 
-                                    url.startsWith("tel:") || 
+                                    url.startsWith("tel://") || 
                                     url.startsWith("mailto:") ||
                                     url.contains("paytm") ||
                                     url.contains("phonepe") ||
