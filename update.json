@@ -1,6 +1,6 @@
 {
   "versionCode": 2,
   "versionName": "1.1",
-  "changelog": "• Color Correction Tag & Green Blinking Status for Linked Devices\n• Soft Keyboard Auto-Hide on Key Submit\n• Enhanced Stability & Performance Fixes",
-  "downloadUrl": "https://github.com/imsonuksingh/AutomationAPK/releases/latest"
+  "changelog": "• Color Correction Tag & Green Blinking Status for Linked Device\n• Soft Keyboard Auto-Hide on Key Submit\n• In-App Direct APK Downloader & Installer Fix",
+  "downloadUrl": "https://github.com/imsonuksingh/AutomationAPK/releases/download/v1.1/IRCTC_Automation_v1.1.apk"
 }
