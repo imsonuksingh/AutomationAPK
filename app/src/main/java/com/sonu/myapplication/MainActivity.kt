@@ -502,7 +502,7 @@ fun LoginScreen(
         Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID) ?: "UNKNOWN_DEVICE"
     }
 
-    // Continuous blinking animation for "Key Blocked!" status
+    // Continuous blinking animation for Blocked status & Linked status
     val blinkTransition = rememberInfiniteTransition(label = "StatusBlink")
     val blinkAlpha by blinkTransition.animateFloat(
         initialValue = 1f,
@@ -644,7 +644,7 @@ fun LoginScreen(
                                 sharedPrefs.edit().clear().apply()
                                 statusMessage = "Status: Already linked with another device!"
                                 Toast.makeText(context, "Already linked with another device!", Toast.LENGTH_LONG).show()
-                                // DO NOT CRASH - Stay on login screen
+                                // DO NOT CRASH - Stay on login screen with Blinking Green Status
                             }
                         }
                     }
@@ -734,26 +734,35 @@ fun LoginScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Real-time Console Status Box with Blinking Red animation for Blocked key
+            // Real-time Console Status Box with Blinking animation for Blocked key and Linked status
             val isBlockedStatus = statusMessage.contains("Blocked")
+            val isLinkedStatus = statusMessage.contains("linked")
+            val isDeniedStatus = statusMessage.contains("Denied")
+            val isBlinkingStatus = isBlockedStatus || isLinkedStatus
+
+            val statusColor = when {
+                isLinkedStatus -> Color(0xFF00FF66) // Bright Green for Already Linked
+                isBlockedStatus || isDeniedStatus -> Color(0xFFFF1744) // Red for Blocked / Denied
+                else -> Color(0xFFFFD700) // Gold for Normal Progress
+            }
 
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(10.dp))
                     .background(Color.Black.copy(alpha = 0.6f))
-                    .border(BorderStroke(1.dp, if (isBlockedStatus) Color(0xFFFF1744) else Color(0xFF00E5FF).copy(alpha = 0.4f)), RoundedCornerShape(10.dp))
+                    .border(BorderStroke(1.dp, if (isLinkedStatus) Color(0xFF00FF66).copy(alpha = 0.6f) else if (isBlockedStatus) Color(0xFFFF1744) else Color(0xFF00E5FF).copy(alpha = 0.4f)), RoundedCornerShape(10.dp))
                     .padding(horizontal = 14.dp, vertical = 10.dp)
             ) {
                 Text(
                     text = statusMessage,
-                    color = if (isBlockedStatus || statusMessage.contains("linked") || statusMessage.contains("Denied")) Color(0xFFFF1744) else Color(0xFFFFD700),
+                    color = statusColor,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Bold,
                     fontFamily = FontFamily.Monospace,
                     textAlign = TextAlign.Start,
                     modifier = Modifier.graphicsLayer {
-                        alpha = if (isBlockedStatus) blinkAlpha else 1f
+                        alpha = if (isBlinkingStatus) blinkAlpha else 1f
                     }
                 )
             }
