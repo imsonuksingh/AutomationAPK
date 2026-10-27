@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.os.Environment
 import android.provider.Settings
 import android.view.ViewGroup
 import android.webkit.GeolocationPermissions
@@ -44,6 +45,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -77,6 +79,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.core.net.toUri
 import com.sonu.myapplication.ui.theme.MyApplicationTheme
 import kotlinx.coroutines.CoroutineScope
@@ -86,6 +89,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.BufferedReader
+import java.io.File
+import java.io.FileOutputStream
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
@@ -140,7 +145,7 @@ class MainActivity : ComponentActivity() {
                     var showWebsiteSelectionDialog by remember { mutableStateOf(false) }
                     var loggedInUserName by remember { mutableStateOf("") }
 
-                    // Check for App Updates from GitHub
+                    // Check for App Updates from GitHub on startup
                     CheckAppUpdates(currentVersionCode = 1)
 
                     when (val screen = currentScreen) {
@@ -269,6 +274,9 @@ class MainActivity : ComponentActivity() {
 fun CheckAppUpdates(currentVersionCode: Int = 1) {
     var updateInfo by remember { mutableStateOf<UpdateInfo?>(null) }
     var showUpdateDialog by remember { mutableStateOf(false) }
+    var isDownloading by remember { mutableStateOf(false) }
+    var downloadProgress by remember { mutableStateOf(0f) }
+    var downloadStatusText by remember { mutableStateOf("Preparing download...") }
     val context = LocalContext.current
 
     LaunchedEffect(Unit) {
@@ -300,6 +308,10 @@ fun CheckAppUpdates(currentVersionCode: Int = 1) {
                             )
                             showUpdateDialog = true
                         }
+                    } else {
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(context, "Already on Latest Version (v1.0)", Toast.LENGTH_SHORT).show()
+                        }
                     }
                 }
             } catch (e: Exception) {
@@ -308,13 +320,89 @@ fun CheckAppUpdates(currentVersionCode: Int = 1) {
         }
     }
 
+    fun downloadAndInstallApk(apkUrl: String) {
+        isDownloading = true
+        downloadStatusText = "Downloading Update APK..."
+
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val url = URL(apkUrl)
+                val connection = url.openConnection() as HttpURLConnection
+                connection.requestMethod = "GET"
+                connection.connect()
+
+                val fileLength = connection.contentLength
+                val downloadsDir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+                val apkFile = File(downloadsDir, "update.apk")
+
+                if (apkFile.exists()) apkFile.delete()
+
+                val inputStream = connection.inputStream
+                val outputStream = FileOutputStream(apkFile)
+
+                val buffer = ByteArray(4096)
+                var total: Long = 0
+                var count: Int
+
+                while (inputStream.read(buffer).also { count = it } != -1) {
+                    total += count.toLong()
+                    if (fileLength > 0) {
+                        downloadProgress = (total.toFloat() / fileLength.toFloat())
+                        downloadStatusText = "Downloading Update: ${(downloadProgress * 100).toInt()}%"
+                    }
+                    outputStream.write(buffer, 0, count)
+                }
+
+                outputStream.flush()
+                outputStream.close()
+                inputStream.close()
+
+                withContext(Dispatchers.Main) {
+                    downloadStatusText = "Download Complete! Launching Installer..."
+                    delay(500)
+                    isDownloading = false
+                    showUpdateDialog = false
+
+                    // Launch Package Installer via FileProvider
+                    try {
+                        val apkUri = FileProvider.getUriForFile(
+                            context,
+                            "${context.packageName}.provider",
+                            apkFile
+                        )
+                        val installIntent = Intent(Intent.ACTION_VIEW).apply {
+                            setDataAndType(apkUri, "application/vnd.android.package-archive")
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        context.startActivity(installIntent)
+                    } catch (e: Exception) {
+                        Toast.makeText(context, "Please grant permission to install updates", Toast.LENGTH_LONG).show()
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                withContext(Dispatchers.Main) {
+                    isDownloading = false
+                    Toast.makeText(context, "Download failed. Redirecting to release page...", Toast.LENGTH_LONG).show()
+                    try {
+                        val intent = Intent(Intent.ACTION_VIEW, apkUrl.toUri())
+                        context.startActivity(intent)
+                    } catch (ex: Exception) {
+                        // ignore
+                    }
+                }
+            }
+        }
+    }
+
     if (showUpdateDialog && updateInfo != null) {
         val info = updateInfo!!
         AlertDialog(
-            onDismissRequest = { showUpdateDialog = false },
+            onDismissRequest = { if (!isDownloading) showUpdateDialog = false },
             title = {
                 Text(
-                    text = "Update Available (v${info.versionName})",
+                    text = "New Update Available (v${info.versionName})",
                     fontWeight = FontWeight.Bold,
                     fontSize = 20.sp,
                     color = Color.White
@@ -323,7 +411,7 @@ fun CheckAppUpdates(currentVersionCode: Int = 1) {
             text = {
                 Column {
                     Text(
-                        text = "A new version of the app is available! What's new:",
+                        text = "A new version of the app is available! Here is what's new:",
                         fontSize = 14.sp,
                         color = Color.White.copy(alpha = 0.85f)
                     )
@@ -342,35 +430,51 @@ fun CheckAppUpdates(currentVersionCode: Int = 1) {
                             fontFamily = FontFamily.Monospace
                         )
                     }
+
+                    if (isDownloading) {
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = downloadStatusText,
+                            fontSize = 13.sp,
+                            color = Color(0xFFFFD700),
+                            fontWeight = FontWeight.Medium
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        LinearProgressIndicator(
+                            progress = { downloadProgress },
+                            modifier = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)),
+                            color = Color(0xFF00E5FF),
+                            trackColor = Color.Gray.copy(alpha = 0.3f)
+                        )
+                    }
                 }
             },
             containerColor = Color(0xFF101828),
             shape = RoundedCornerShape(24.dp),
             confirmButton = {
-                Button(
-                    onClick = {
-                        try {
-                            val intent = Intent(Intent.ACTION_VIEW, info.downloadUrl.toUri())
-                            context.startActivity(intent)
-                        } catch (e: Exception) {
-                            Toast.makeText(context, "Could not open download link", Toast.LENGTH_SHORT).show()
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFD700)),
-                    shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier.fillMaxWidth().height(48.dp)
-                ) {
-                    Text(
-                        text = "Update Now",
-                        color = Color(0xFF1A237E),
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp
-                    )
+                if (!isDownloading) {
+                    Button(
+                        onClick = {
+                            downloadAndInstallApk(info.downloadUrl)
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFD700)),
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.fillMaxWidth().height(48.dp)
+                    ) {
+                        Text(
+                            text = "Download & Install Update",
+                            color = Color(0xFF1A237E),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp
+                        )
+                    }
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showUpdateDialog = false }) {
-                    Text(text = "Later", color = Color.Gray)
+                if (!isDownloading) {
+                    TextButton(onClick = { showUpdateDialog = false }) {
+                        Text(text = "Later", color = Color.Gray)
+                    }
                 }
             }
         )
